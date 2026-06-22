@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bedrock-mod-loader"
+version = "0.1.0"
+description = "A multi-tool for installing and auto-loading Minecraft Bedrock mod packs and resources"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+watch = ["watchdog>=3.0"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+bedrock-mod-loader = "bedrock_mod_loader.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bedrock_mod_loader*"]
