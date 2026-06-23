@@ -15,5 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install Tk + a virtual display (best-effort, for the GUI tests)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk xvfb
       - run: pip install -e ".[dev]"
-      - run: pytest
+      - run: xvfb-run -a pytest
