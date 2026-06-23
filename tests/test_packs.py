@@ -7,6 +7,7 @@ from bedrock_mod_loader.packs import (
     classify_manifest,
     discover_sources,
     is_world_save,
+    pack_icon_path,
     read_pack_info,
 )
 
@@ -45,6 +46,45 @@ def test_read_pack_info_missing_uuid_raises(tmp_path):
     (pack_dir / "manifest.json").write_text('{"header": {}, "modules": [{"type": "data"}]}', encoding="utf-8")
     with pytest.raises(PackError):
         read_pack_info(pack_dir)
+
+
+def test_read_pack_info_parses_description_and_min_engine_version(tmp_path):
+    pack_dir = write_pack_dir(tmp_path, BP_UUID)
+    info = read_pack_info(pack_dir)
+    assert info.description == "test pack"
+    assert info.min_engine_version == (1, 21, 0)
+
+
+def test_read_pack_info_parses_dependencies(tmp_path):
+    pack_dir = tmp_path / "pack_with_deps"
+    pack_dir.mkdir()
+    manifest = {
+        "header": {"name": "Needs Stuff", "uuid": BP_UUID, "version": [1, 0, 0]},
+        "modules": [{"type": "data"}],
+        "dependencies": [
+            {"uuid": RP_UUID, "version": [1, 2, 0]},
+            {"version": [9, 9, 9]},
+            "not-a-dict-skip-me",
+        ],
+    }
+    import json
+
+    (pack_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    info = read_pack_info(pack_dir)
+    assert info.dependencies == ((RP_UUID, (1, 2, 0)),)
+
+
+def test_pack_icon_path_returns_none_when_missing(tmp_path):
+    pack_dir = write_pack_dir(tmp_path, BP_UUID)
+    info = read_pack_info(pack_dir)
+    assert pack_icon_path(info) is None
+
+
+def test_pack_icon_path_returns_path_when_present(tmp_path):
+    pack_dir = write_pack_dir(tmp_path, BP_UUID)
+    (pack_dir / "pack_icon.png").write_bytes(b"\x89PNG")
+    info = read_pack_info(pack_dir)
+    assert pack_icon_path(info) == pack_dir / "pack_icon.png"
 
 
 def test_is_world_save(tmp_path):
