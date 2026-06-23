@@ -1,10 +1,20 @@
-from bedrock_mod_loader.installer import install_pack, install_world, sanitize_name, target_subdir
+from bedrock_mod_loader.installer import (
+    find_installed_pack,
+    install_pack,
+    install_world,
+    iter_installed_packs,
+    sanitize_name,
+    target_subdir,
+    uninstall_pack,
+    world_display_name,
+)
 from bedrock_mod_loader.packs import PackError, PackInfo, read_pack_info
 
 from .helpers import write_pack_dir, write_world_dir
 
 BP_UUID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 OTHER_UUID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+RP_UUID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 
 def test_target_subdir_dev_vs_prod():
@@ -113,3 +123,83 @@ def test_install_world_force_overwrites(tmp_path):
     first = install_world(world_dir, tmp_path / "com.mojang")
     second = install_world(world_dir, tmp_path / "com.mojang", force=True)
     assert first == second
+
+
+def test_world_display_name_falls_back_to_dir_name(tmp_path):
+    world_dir = tmp_path / "world_src"
+    world_dir.mkdir()
+    assert world_display_name(world_dir) == "world_src"
+
+
+def test_iter_installed_packs_finds_dev_and_prod(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    dev_pack = write_pack_dir(tmp_path / "dev", BP_UUID, name="Dev Pack")
+    install_pack(read_pack_info(dev_pack), game_dir, dev=True)
+    prod_pack = write_pack_dir(tmp_path / "prod", RP_UUID, name="Prod Pack", module_type="resources")
+    install_pack(read_pack_info(prod_pack), game_dir, dev=False)
+
+    found = {info.uuid: info for info in iter_installed_packs(game_dir)}
+
+    assert set(found) == {BP_UUID, RP_UUID}
+
+
+def test_iter_installed_packs_skips_unreadable_manifest(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    broken_dir = game_dir / "development_behavior_packs" / "broken"
+    broken_dir.mkdir(parents=True)
+    (broken_dir / "manifest.json").write_text("not json", encoding="utf-8")
+
+    assert list(iter_installed_packs(game_dir)) == []
+
+
+def test_find_installed_pack_by_uuid_prefix(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    pack_dir = write_pack_dir(tmp_path, BP_UUID, name="Cool Pack")
+    install_pack(read_pack_info(pack_dir), game_dir, dev=True)
+
+    info = find_installed_pack(game_dir, BP_UUID[:8])
+
+    assert info.uuid == BP_UUID
+
+
+def test_find_installed_pack_by_name_substring(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    pack_dir = write_pack_dir(tmp_path, BP_UUID, name="Cool Pack")
+    install_pack(read_pack_info(pack_dir), game_dir, dev=True)
+
+    info = find_installed_pack(game_dir, "cool")
+
+    assert info.uuid == BP_UUID
+
+
+def test_find_installed_pack_no_match_raises(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    try:
+        find_installed_pack(game_dir, "nope")
+        assert False, "expected PackError"
+    except PackError:
+        pass
+
+
+def test_find_installed_pack_ambiguous_match_raises(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    first = write_pack_dir(tmp_path / "first", BP_UUID, name="Shared Pack")
+    install_pack(read_pack_info(first), game_dir, dev=True)
+    second = write_pack_dir(tmp_path / "second", OTHER_UUID, name="Shared Pack")
+    install_pack(read_pack_info(second), game_dir, dev=True)
+
+    try:
+        find_installed_pack(game_dir, "shared")
+        assert False, "expected PackError"
+    except PackError as exc:
+        assert "multiple" in str(exc)
+
+
+def test_uninstall_pack_removes_directory(tmp_path):
+    game_dir = tmp_path / "com.mojang"
+    pack_dir = write_pack_dir(tmp_path, BP_UUID, name="Cool Pack")
+    result = install_pack(read_pack_info(pack_dir), game_dir, dev=True)
+
+    uninstall_pack(read_pack_info(result.installed_path))
+
+    assert not result.installed_path.exists()
