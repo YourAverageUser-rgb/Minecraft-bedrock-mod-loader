@@ -29,10 +29,16 @@ def watch_forever(
     poll_interval: float = 2.0,
     min_age: float = 1.5,
     max_iterations: Optional[int] = None,
+    stop: Optional[Callable[[], bool]] = None,
 ) -> None:
+    """Loop until `max_iterations` is reached or `stop()` returns True (e.g. a GUI
+    Stop button setting a threading.Event), whichever comes first.
+    """
     processed: Set[str] = set()
     iterations = 0
     while max_iterations is None or iterations < max_iterations:
+        if stop is not None and stop():
+            return
         for entry in scan_ready(drop_dir, processed, min_age):
             processed.add(entry.name)
             handler(entry)
