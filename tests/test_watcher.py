@@ -48,3 +48,28 @@ def test_watch_forever_picks_up_new_file_on_later_iteration(tmp_path):
     watch_forever(tmp_path, handler=seen.append, poll_interval=0, min_age=0, max_iterations=1)
 
     assert [p.name for p in seen] == ["late.mcpack"]
+
+
+def test_watch_forever_stops_immediately_when_stop_returns_true(tmp_path):
+    (tmp_path / "a.mcpack").write_bytes(b"data")
+    seen = []
+
+    watch_forever(tmp_path, handler=seen.append, poll_interval=0, min_age=0, stop=lambda: True)
+
+    assert seen == []
+
+
+def test_watch_forever_stops_after_stop_flips_mid_run(tmp_path):
+    (tmp_path / "a.mcpack").write_bytes(b"data")
+    (tmp_path / "b.mcpack").write_bytes(b"data")
+    seen = []
+    calls = {"count": 0}
+
+    def stop():
+        calls["count"] += 1
+        return calls["count"] > 1
+
+    watch_forever(tmp_path, handler=seen.append, poll_interval=0, min_age=0, stop=stop)
+
+    assert sorted(p.name for p in seen) == ["a.mcpack", "b.mcpack"]
+    assert calls["count"] == 2
