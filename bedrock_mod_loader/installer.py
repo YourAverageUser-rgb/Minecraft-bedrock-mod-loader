@@ -5,6 +5,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 from uuid import uuid4
 
 from .packs import PackError, PackInfo, read_pack_info
@@ -77,7 +78,7 @@ def install_pack(info: PackInfo, game_dir: Path, dev: bool = True, force: bool =
     return InstallResult(info.kind, info.name, info.uuid, info.version, dest, action)
 
 
-def _world_display_name(world_dir: Path) -> str:
+def world_display_name(world_dir: Path) -> str:
     levelname_file = world_dir / "levelname.txt"
     if levelname_file.is_file():
         try:
@@ -92,7 +93,7 @@ def _world_display_name(world_dir: Path) -> str:
 def install_world(world_dir: Path, game_dir: Path, force: bool = False) -> Path:
     worlds_root = game_dir / "minecraftWorlds"
     worlds_root.mkdir(parents=True, exist_ok=True)
-    name = sanitize_name(_world_display_name(world_dir))
+    name = sanitize_name(world_display_name(world_dir))
     dest = worlds_root / name
 
     if dest.exists():
@@ -103,3 +104,42 @@ def install_world(world_dir: Path, game_dir: Path, force: bool = False) -> Path:
 
     shutil.copytree(world_dir, dest)
     return dest
+
+
+def iter_installed_packs(game_dir: Path) -> Iterator[PackInfo]:
+    """Yield PackInfo for every readable pack under any dev/prod subfolder."""
+    subdirs = sorted(set(DEV_SUBDIRS.values()) | set(PROD_SUBDIRS.values()))
+    for subdir in subdirs:
+        root = game_dir / subdir
+        if not root.is_dir():
+            continue
+        for pack_dir in sorted(root.iterdir()):
+            if not pack_dir.is_dir():
+                continue
+            try:
+                yield read_pack_info(pack_dir)
+            except PackError:
+                continue
+
+
+def find_installed_pack(game_dir: Path, identifier: str) -> PackInfo:
+    """Look up an installed pack by UUID (full or prefix) or by a name substring."""
+    identifier_lower = identifier.lower()
+    matches = {}
+    for info in iter_installed_packs(game_dir):
+        if info.uuid.lower() == identifier_lower or info.uuid.lower().startswith(identifier_lower):
+            matches[info.path] = info
+        elif identifier_lower in info.name.lower():
+            matches[info.path] = info
+
+    if not matches:
+        raise PackError(f"No installed pack matches '{identifier}'")
+    if len(matches) > 1:
+        options = ", ".join(f"{m.name} ({m.uuid})" for m in matches.values())
+        raise PackError(f"'{identifier}' matches multiple installed packs: {options}")
+    return next(iter(matches.values()))
+
+
+def uninstall_pack(info: PackInfo) -> None:
+    """Delete an installed pack's files from disk."""
+    shutil.rmtree(info.path)

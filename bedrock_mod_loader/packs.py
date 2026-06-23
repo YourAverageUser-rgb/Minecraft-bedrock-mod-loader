@@ -34,6 +34,9 @@ class PackInfo:
     uuid: str
     version: tuple
     name: str
+    description: str = ""
+    min_engine_version: tuple = ()
+    dependencies: tuple = ()  # tuple of (uuid, version-tuple) pairs
 
 
 def load_manifest(pack_dir: Path) -> dict:
@@ -62,8 +65,30 @@ def read_pack_info(pack_dir: Path) -> PackInfo:
         raise PackError(f"manifest.json in {pack_dir} is missing header.uuid")
     version = tuple(header.get("version", [0, 0, 0]))
     name = header.get("name", pack_dir.name)
+    description = header.get("description", "") or ""
+    min_engine_version = tuple(header.get("min_engine_version", []))
     kind = classify_manifest(manifest)
-    return PackInfo(path=pack_dir, kind=kind, uuid=pack_uuid, version=version, name=name)
+    dependencies = tuple(
+        (dep["uuid"], tuple(dep.get("version", [])))
+        for dep in manifest.get("dependencies", [])
+        if isinstance(dep, dict) and dep.get("uuid")
+    )
+    return PackInfo(
+        path=pack_dir,
+        kind=kind,
+        uuid=pack_uuid,
+        version=version,
+        name=name,
+        description=description,
+        min_engine_version=min_engine_version,
+        dependencies=dependencies,
+    )
+
+
+def pack_icon_path(info: PackInfo) -> Path | None:
+    """Path to the pack's icon image, if it ships one (used for GUI thumbnails)."""
+    icon = info.path / "pack_icon.png"
+    return icon if icon.is_file() else None
 
 
 def is_world_save(directory: Path) -> bool:
